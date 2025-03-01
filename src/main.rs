@@ -211,8 +211,8 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 			output += "\t\tpub fn from_u32(value: u32) -> Option<Self> {\n";
 			output += "\t\t\tmatch value {\n";
 			for entry in &e.values {
-				let name = format::snake_to_upper_camel(&entry.name);
-				output += format!("\t\t\t\t{} => Some(Format::{}),\n", entry.value, name).as_str();
+				let entry_name = format::snake_to_upper_camel(&entry.name);
+				output += format!("\t\t\t\t{} => Some({}::{}),\n", entry.value, name, entry_name).as_str();
 			}
 			output += "\t\t\t\t_ => None,\n";
 			output += "\t\t\t}\n";
