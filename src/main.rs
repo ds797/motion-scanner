@@ -129,22 +129,63 @@ impl Stack {
 	}
 }
 
+fn output_reqevent(re: &RequestEvent) -> String {
+	let mut output = String::new();
+
+	if let Some(desc) = re.description.as_ref() {
+		if let Some(content) = &desc.content {
+			for line in content.split("\n") {
+				output += format!("\t\t/// {}\n", line.trim()).as_str();
+			}
+		}
+	}
+	let name = format::snake_to_upper_camel(&re.name);
+	if re.args.len() == 0 {
+		output += format!("\t\t{} {{}},\n", name).as_str();
+	} else {
+		output += format!("\t\t{} {{\n", name).as_str();
+		for a in &re.args {
+			output += format!("\t\t\t/// {}.\n", format::to_title(&a.summary)).as_str();
+			if let Some(enm) = &a.enm {
+				let parts: Vec<&str> = enm.split('.').collect();
+				output += match parts.len() {
+					1 => {
+						let name = format::snake_to_upper_camel(parts[0]);
+						Some(format!("\t\t\t{}: {},\n", a.name, name))
+					}
+					2 => {
+						let module = parts[0];
+						let name = format::snake_to_upper_camel(parts[1]);
+						Some(format!("\t\t\t{}: {}::{},\n", a.name, module, name))
+					}
+					_ => None
+				}.expect("Enum had three or more parts").as_str()
+			} else {
+				output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
+			}
+		}
+		output += "\t\t},\n"
+	}
+
+	output
+}
+
 fn build_output(interfaces: Vec<Interface>) -> String {
 	let mut output = String::new();
 
-	for (index, i) in interfaces.iter().enumerate() {
-		if let Some(desc) = i.description.as_ref() {
+	for (index, interface) in interfaces.iter().enumerate() {
+		if let Some(desc) = interface.description.as_ref() {
 			if let Some(content) = &desc.content {
 				for line in content.split("\n") {
 					output += format!("/// {}\n", line.trim()).as_str();
 				}
 			}
 		}
-		output += format!("pub mod {} {{\n", &i.name).as_str();
+		output += format!("pub mod {} {{\n", &interface.name).as_str();
 
 		// Include modules for request arguments that reference enums outside of
 		// their own module
-		let chain: Vec<&RequestEvent> = i.requests.iter().chain(i.events.iter()).collect();
+		let chain: Vec<&RequestEvent> = interface.requests.iter().chain(interface.events.iter()).collect();
 		let mut modules = HashSet::new();
 		for re in chain {
 			for a in &re.args {
@@ -166,76 +207,30 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 			output += "\n";
 		}
 
-		output += format!("\tpub const VERSION: u32 = {};\n\n", i.version).as_str();
+		output += format!("\tpub const VERSION: u32 = {};\n", interface.version).as_str();
 
-		output += "\tpub enum Request {\n";
-		for r in &i.requests {
-			if let Some(desc) = r.description.as_ref() {
-				if let Some(content) = &desc.content {
-					for line in content.split("\n") {
-						output += format!("\t\t/// {}\n", line.trim()).as_str();
-					}
-				}
+		if !interface.requests.is_empty() {
+			output += "\n\tpub enum Request {\n";
+			for request in &interface.requests {
+				output += output_reqevent(request).as_str();
 			}
-			let name = format::snake_to_upper_camel(&r.name);
-			if r.args.len() == 0 {
-				output += format!("\t\t{} {{}},\n", name).as_str();
-			} else {
-				output += format!("\t\t{} {{\n", name).as_str();
-				for a in &r.args {
-					output += format!("\t\t\t/// {}.\n", format::to_title(&a.summary)).as_str();
-					output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
-				}
-				output += "\t\t},\n"
-			}
+			output += "\t}\n";
 		}
 
-		output += "\t}\n\n";
-		output += "\tpub enum Event {\n";
-		for e in &i.events {
-			if let Some(desc) = e.description.as_ref() {
-				if let Some(content) = &desc.content {
-					for line in content.split("\n") {
-						output += format!("\t\t/// {}\n", line.trim()).as_str();
-					}
-				}
+		if !interface.events.is_empty() {
+			output += "\n\tpub enum Event {\n";
+			for event in &interface.events {
+				output += output_reqevent(event).as_str();
 			}
-			let name = format::snake_to_upper_camel(&e.name);
-			if e.args.len() == 0 {
-				output += format!("\t\t{} {{}},\n", name).as_str();
-			} else {
-				output += format!("\t\t{} {{\n", name).as_str();
-				for a in &e.args {
-					output += format!("\t\t\t/// {}.\n", format::to_title(&a.summary)).as_str();
-					if let Some(enm) = &a.enm {
-						let parts: Vec<&str> = enm.split('.').collect();
-						output += match parts.len() {
-							1 => {
-								let name = format::snake_to_upper_camel(parts[0]);
-								Some(format!("\t\t\t{}: {},\n", a.name, name))
-							}
-							2 => {
-								let module = parts[0];
-								let name = format::snake_to_upper_camel(parts[1]);
-								Some(format!("\t\t\t{}: {}::{},\n", a.name, module, name))
-							}
-							_ => None
-						}.expect("Enum had three or more parts").as_str()
-					} else {
-						output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
-					}
-				}
-				output += "\t\t},\n"
-			}
+			output += "\t}\n";
 		}
-		output += "\t}\n";
 
-		if !i.enums.is_empty() {
+		if !interface.enums.is_empty() {
 			output += "\n";
 		}
-		for e in &i.enums {
-			let name = format::snake_to_upper_camel(&e.name);
-			if let Some(desc) = e.description.as_ref() {
+		for (index, enm) in interface.enums.iter().enumerate() {
+			let name = format::snake_to_upper_camel(&enm.name);
+			if let Some(desc) = enm.description.as_ref() {
 				if let Some(content) = &desc.content {
 					for line in content.split("\n") {
 						output += format!("\t/// {}\n", line.trim()).as_str();
@@ -244,7 +239,7 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 			}
 			output += "\t#[repr(u32)]\n";
 			output += format!("\tpub enum {} {{\n", name).as_str();
-			for entry in &e.values {
+			for entry in &enm.values {
 				let name = format::snake_to_upper_camel(&entry.name);
 				output += format!("\t\t{} = {},\n", name, entry.value).as_str();
 			}
@@ -252,14 +247,17 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 			output += format!("\timpl {} {{\n", name).as_str();
 			output += "\t\tpub fn from_u32(value: u32) -> Option<Self> {\n";
 			output += "\t\t\tmatch value {\n";
-			for entry in &e.values {
+			for entry in &enm.values {
 				let entry_name = format::snake_to_upper_camel(&entry.name);
 				output += format!("\t\t\t\t{} => Some({}::{}),\n", entry.value, name, entry_name).as_str();
 			}
 			output += "\t\t\t\t_ => None,\n";
 			output += "\t\t\t}\n";
 			output += "\t\t}\n";
-			output += "\t}\n\n";
+			output += "\t}\n";
+			if index < interface.enums.len() - 1 {
+				output += "\n";
+			}
 		}
 
 		output += "}\n";
