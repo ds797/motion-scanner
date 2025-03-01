@@ -1,4 +1,5 @@
 use core::str;
+use std::collections::HashSet;
 use std::{fs::File, io::Write};
 use std::io::BufReader;
 use quick_xml::{
@@ -131,8 +132,7 @@ impl Stack {
 fn build_output(interfaces: Vec<Interface>) -> String {
 	let mut output = String::new();
 
-	for i in interfaces {
-		let name = format::snake_to_upper_camel(&i.name);
+	for (index, i) in interfaces.iter().enumerate() {
 		if let Some(desc) = i.description.as_ref() {
 			if let Some(content) = &desc.content {
 				for line in content.split("\n") {
@@ -140,8 +140,34 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 				}
 			}
 		}
-		output += format!("pub mod {} {{\n", name).as_str();
+		output += format!("pub mod {} {{\n", &i.name).as_str();
+
+		// Include modules for request arguments that reference enums outside of
+		// their own module
+		let chain: Vec<&RequestEvent> = i.requests.iter().chain(i.events.iter()).collect();
+		let mut modules = HashSet::new();
+		for re in chain {
+			for a in &re.args {
+				if let Some(enm) = &a.enm {
+					let parts: Vec<&str> = enm.split('.').collect();
+					match parts.len() {
+						2 => {
+							modules.insert(parts[0]);
+						}
+						_ => {}
+					}
+				}
+			}
+		}
+		if !modules.is_empty() {
+			for entry in modules {
+				output += format!("\tuse crate::{};\n", entry).as_str();
+			}
+			output += "\n";
+		}
+
 		output += format!("\tpub const VERSION: u32 = {};\n\n", i.version).as_str();
+
 		output += "\tpub enum Request {\n";
 		for r in &i.requests {
 			if let Some(desc) = r.description.as_ref() {
@@ -163,6 +189,7 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 				output += "\t\t},\n"
 			}
 		}
+
 		output += "\t}\n\n";
 		output += "\tpub enum Event {\n";
 		for e in &i.events {
@@ -180,7 +207,23 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 				output += format!("\t\t{} {{\n", name).as_str();
 				for a in &e.args {
 					output += format!("\t\t\t/// {}.\n", format::to_title(&a.summary)).as_str();
-					output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
+					if let Some(enm) = &a.enm {
+						let parts: Vec<&str> = enm.split('.').collect();
+						output += match parts.len() {
+							1 => {
+								let name = format::snake_to_upper_camel(parts[0]);
+								Some(format!("\t\t\t{}: {},\n", a.name, name))
+							}
+							2 => {
+								let module = parts[0];
+								let name = format::snake_to_upper_camel(parts[1]);
+								Some(format!("\t\t\t{}: {}::{},\n", a.name, module, name))
+							}
+							_ => None
+						}.expect("Enum had three or more parts").as_str()
+					} else {
+						output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
+					}
 				}
 				output += "\t\t},\n"
 			}
@@ -190,7 +233,6 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 		if !i.enums.is_empty() {
 			output += "\n";
 		}
-
 		for e in &i.enums {
 			let name = format::snake_to_upper_camel(&e.name);
 			if let Some(desc) = e.description.as_ref() {
@@ -220,7 +262,10 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 			output += "\t}\n\n";
 		}
 
-		output += "}\n\n";
+		output += "}\n";
+		if index < interfaces.len() - 1 {
+			output += "\n";
+		}
 	}
 
 	output
@@ -316,12 +361,14 @@ fn parse_xml(reader: &mut Reader<BufReader<File>>) -> anyhow::Result<Vec<Interfa
 							"false" => Some(false),
 							_ => None
 						}.unwrap();
+						let enm = xml::try_find_attr(&attributes, "enum");
 
 						let re = stack.last_reqevent();
 						re.args.push(Arg {
 							name,
 							typ: ArgType::from_string(typ),
 							summary,
+							enm,
 							allow_null,
 						});
 					}
@@ -408,7 +455,7 @@ fn parse_xml(reader: &mut Reader<BufReader<File>>) -> anyhow::Result<Vec<Interfa
 
 fn main() -> anyhow::Result<()> {
 	const INPUT_FILE: &str = "/usr/share/wayland/wayland.xml";
-	const OUTPUT_FILE: &str = "output.rs";
+	const OUTPUT_FILE: &str = "output/src/lib.rs";
 
 	let mut reader = Reader::from_file(INPUT_FILE)?;
 	let mut writer = File::create(OUTPUT_FILE)?;

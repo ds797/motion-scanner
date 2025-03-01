@@ -120,6 +120,7 @@ pub struct Arg {
 	pub name: String,
 	pub typ: ArgType,
 	pub summary: String,
+	pub enm: Option<String>,
 	pub allow_null: bool,
 }
 
