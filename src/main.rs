@@ -18,7 +18,6 @@ use quick_xml::{
 };
 
 mod wl_types;
-mod convert;
 mod format;
 mod xml;
 
@@ -302,7 +301,7 @@ fn parse_xml(reader: &mut Reader<BufReader<File>>) -> anyhow::Result<Vec<Interfa
 						let re = stack.last_reqevent();
 						re.args.push(Arg {
 							name,
-							typ: convert::type_from_string(typ),
+							typ: ArgType::from_string(typ),
 							summary,
 							allow_null,
 						});

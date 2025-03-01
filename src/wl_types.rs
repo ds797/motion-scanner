@@ -27,6 +27,38 @@ pub enum ArgType {
 	Fd,
 }
 
+impl ArgType {
+	pub fn from_string(typ: String) -> ArgType {
+		match typ.as_str() {
+			"int" => Some(ArgType::Int),
+			"uint" => Some(ArgType::Uint),
+			"fixed" => Some(ArgType::Fixed),
+			"string" => Some(ArgType::String),
+			"object" => Some(ArgType::ObjectId),
+			"new_id" => Some(ArgType::NewId),
+			"array" => Some(ArgType::Array),
+			"fd" => Some(ArgType::Fd),
+			_ => None
+		}.expect("Unknown type")
+	}
+	
+	pub fn to_rust_type_string(&self) -> String {
+		match self {
+			ArgType::Int => "i32".to_string(),
+			ArgType::Uint => "u32".to_string(),
+			ArgType::Fixed => "f32".to_string(),
+			ArgType::String => "String".to_string(),
+			ArgType::ObjectId => "u32".to_string(),
+			ArgType::NewId => "u32".to_string(),
+			// This is hardcoded for now - there's only one instance of an
+			// array type in the entire protocol. However, this might change -
+			// ideally we'd have a more robust type system for arrays.
+			ArgType::Array => "Vec<u32>".to_string(),
+			ArgType::Fd => "u32".to_string(),
+		}
+	}
+}
+
 impl ToString for ArgType {
 	fn to_string(&self) -> String {
 		match self {
