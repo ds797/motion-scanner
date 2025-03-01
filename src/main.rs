@@ -22,6 +22,7 @@ mod format;
 mod xml;
 
 use wl_types::{
+	ArgType,
 	Interface,
 	Description,
 	RequestEvent,
@@ -151,7 +152,16 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 				}
 			}
 			let name = format::snake_to_upper_camel(&r.name);
-			output += format!("\t\t{} {{}},\n", name).as_str();
+			if r.args.len() == 0 {
+				output += format!("\t\t{} {{}},\n", name).as_str();
+			} else {
+				output += format!("\t\t{} {{\n", name).as_str();
+				for a in &r.args {
+					output += format!("\t\t\t/// {}.\n", format::to_title(&a.summary)).as_str();
+					output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
+				}
+				output += "\t\t},\n"
+			}
 		}
 		output += "\t}\n\n";
 		output += "\tpub enum Event {\n";
@@ -164,7 +174,16 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 				}
 			}
 			let name = format::snake_to_upper_camel(&e.name);
-			output += format!("\t\t{} {{}},\n", name).as_str();
+			if e.args.len() == 0 {
+				output += format!("\t\t{} {{}},\n", name).as_str();
+			} else {
+				output += format!("\t\t{} {{\n", name).as_str();
+				for a in &e.args {
+					output += format!("\t\t\t/// {}.\n", format::to_title(&a.summary)).as_str();
+					output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
+				}
+				output += "\t\t},\n"
+			}
 		}
 		output += "\t}\n";
 

@@ -28,3 +28,7 @@ pub fn format_documentation(text: &str) -> anyhow::Result<String> {
 
 	Ok(text.to_string())
 }
+
+pub fn to_title(text: &String) -> String {
+	return text[0..1].to_ascii_uppercase() + &text[1..text.len()]
+}
