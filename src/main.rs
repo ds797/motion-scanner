@@ -22,7 +22,6 @@ mod convert;
 mod format;
 mod xml;
 
-use regex::Regex;
 use wl_types::{
 	Interface,
 	Description,
@@ -145,7 +144,6 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 		output += format!("\tpub const VERSION: u32 = {};\n\n", i.version).as_str();
 		output += "\tpub enum Request {\n";
 		for r in &i.requests {
-			let name = format::snake_to_upper_camel(&r.name);
 			if let Some(desc) = r.description.as_ref() {
 				if let Some(content) = &desc.content {
 					for line in content.split("\n") {
@@ -153,7 +151,8 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 					}
 				}
 			}
-			output += format!("\t\t {},\n", name).as_str();
+			let name = format::snake_to_upper_camel(&r.name);
+			output += format!("\t\t{} {{}},\n", name).as_str();
 		}
 		output += "\t}\n\n";
 		output += "\tpub enum Event {\n";
@@ -166,9 +165,7 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 				}
 			}
 			let name = format::snake_to_upper_camel(&e.name);
-			output += "\t\t";
-			output += name.as_str();
-			output += " {},\n";
+			output += format!("\t\t{} {{}},\n", name).as_str();
 		}
 		output += "\t}\n";
 
