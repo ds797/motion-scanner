@@ -32,6 +32,9 @@ use wl_types::{
 	Enum,
 };
 
+const INPUT_FILE: &str = "/usr/share/wayland/wayland.xml";
+const OUTPUT_FILE: &str = "output/src/lib.rs";
+
 enum ElementType {
 	Interface(Interface),
 	ReqEvent(RequestEvent),
@@ -452,9 +455,6 @@ fn parse_xml(reader: &mut Reader<BufReader<File>>) -> anyhow::Result<Vec<Interfa
 }
 
 fn main() -> anyhow::Result<()> {
-	const INPUT_FILE: &str = "/usr/share/wayland/wayland.xml";
-	const OUTPUT_FILE: &str = "output/src/lib.rs";
-
 	let mut reader = Reader::from_file(INPUT_FILE)?;
 	let mut writer = File::create(OUTPUT_FILE)?;
 
