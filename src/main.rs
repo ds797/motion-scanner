@@ -398,6 +398,9 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 			output += format!("\tpub enum {} {{\n", name).as_str();
 			for entry in &enm.values {
 				let name = format::snake_to_upper_camel(&entry.name);
+				if let Some(summary) = &entry.summary {
+					output += format!("\t\t/// {}.\n", format::to_title(&summary)).as_str();
+				}
 				output += format!("\t\t{} = {},\n", name, entry.value).as_str();
 			}
 			output += "\t}\n\n";
