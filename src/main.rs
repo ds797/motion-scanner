@@ -521,7 +521,14 @@ fn parse_xml(reader: &mut Reader<BufReader<File>>) -> anyhow::Result<Vec<Interfa
 						let re = stack.last_reqevent();
 						re.args.push(Arg {
 							name,
-							typ: ArgType::from_string(typ),
+							// For some reason, wl_surface.set_buffer_transform argument
+							// is an i32, despite pointing to an enum. We're just going
+							// to cast it to u32 for simplicity. This might break things
+							// later.
+							typ: match &enm {
+								Some(_) => ArgType::Uint,
+								None => ArgType::from_string(typ),
+							},
 							summary,
 							enm,
 							allow_null,
