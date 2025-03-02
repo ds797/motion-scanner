@@ -200,8 +200,13 @@ fn output_request_from_opcode(re: &RequestEvent, index: usize) -> String {
 	let mut output = String::new();
 
 	output += format!("{}{} => {{\n", t(4), index).as_str();
-	output += format!("{}let mut index = 0usize;\n", t(5)).as_str();
-	for arg in &re.args {
+	if re.args.len() == 1 {
+		output += format!("{}let index = 0usize;\n", t(5)).as_str();
+	} else if re.args.len() >= 1 {
+		output += format!("{}let mut index = 0usize;\n", t(5)).as_str();
+	}
+	for (index, arg) in re.args.iter().enumerate() {
+		let last_arg = index == re.args.len() - 1;
 		let single_byte = match arg.typ {
 			ArgType::Int => true,
 			ArgType::Uint => true,
@@ -241,7 +246,9 @@ fn output_request_from_opcode(re: &RequestEvent, index: usize) -> String {
 					).as_str();
 				}
 			}
-			output += format!("{}index += 1;\n", t(5)).as_str();
+			if !last_arg {
+				output += format!("{}index += 1;\n", t(5)).as_str();
+			}
 		} else {
 			output += match arg.typ {
 				ArgType::String => {
@@ -255,15 +262,16 @@ fn output_request_from_opcode(re: &RequestEvent, index: usize) -> String {
 						"{}let {}_count = {}_size.div_ceil(4);\n",
 						t(5), arg.name, arg.name,
 					).as_str();
-					output += format!("{}index += 1;\n", t(5)).as_str();
 					output += format!(
-						"{}let {} = crate::le_arr_to_string(&args[index..index + {}_count], {}_size);\n",
+						"{}let {} = crate::le_arr_to_string(&args[index + 1..index + 1 + {}_count], {}_size);\n",
 						t(5), arg.name, arg.name, arg.name,
 					).as_str();
-					output += format!(
-						"{}index += {}_count;\n",
-						t(5), arg.name,
-					).as_str();
+					if !last_arg {
+						output += format!(
+							"{}index += 1 + {}_count;\n",
+							t(5), arg.name,
+						).as_str();
+					}
 					Some(output)
 				}
 				ArgType::Array => {
@@ -277,15 +285,16 @@ fn output_request_from_opcode(re: &RequestEvent, index: usize) -> String {
 						"{}let {}_count = {}_size.div_ceil(4);\n",
 						t(5), arg.name, arg.name,
 					).as_str();
-					output += format!("{}index += 1;\n", t(5)).as_str();
 					output += format!(
-						"{}let {} = crate::to_vec(&args[index..index + {}_count], {}_size);\n",
+						"{}let {} = crate::to_vec(&args[index + 1..index + 1 + {}_count], {}_size);\n",
 						t(5), arg.name, arg.name, arg.name,
 					).as_str();
-					output += format!(
-						"{}index += {}_count;\n",
-						t(5), arg.name,
-					).as_str();
+					if !last_arg {
+						output += format!(
+							"{}index += 1 + {}_count;\n",
+							t(5), arg.name,
+						).as_str();
+					}
 					Some(output)
 				}
 				_ => None
