@@ -2,6 +2,7 @@ use core::str;
 use std::collections::HashSet;
 use std::{fs::File, io::Write};
 use std::io::BufReader;
+use format::snake_to_upper_camel;
 use quick_xml::{
 	reader::Reader,
 	events::Event::{
@@ -34,7 +35,6 @@ use wl_types::{
 
 const INPUT_FILE: &str = "/usr/share/wayland/wayland.xml";
 const OUTPUT_FILE: &str = "output/src/lib.rs";
-
 enum ElementType {
 	Interface(Interface),
 	ReqEvent(RequestEvent),
@@ -132,6 +132,41 @@ impl Stack {
 	}
 }
 
+fn t(count: usize) -> String {
+	let mut tabs = String::new();
+	for _ in 0..count {
+		tabs += "\t";
+	}
+	tabs
+}
+
+fn output_string_conversion() -> String {
+	let mut output = String::new();
+
+	output += "fn le_arr_to_string(words: &[u32], length: usize) -> String {\n";
+	output += "\tlet mut bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();\n";
+	output += "\tbytes.truncate(length);\n";
+	output += "\tString::from_utf8_lossy(&bytes).to_string()\n";
+	output += "}\n\n";
+
+	output
+}
+
+fn string_enum_to_type(enm: &String) -> String {
+	let parts: Vec<&str> = enm.split('.').collect();
+	match parts.len() {
+		1 => {
+			Some(format::snake_to_upper_camel(parts[0]))
+		}
+		2 => {
+			let module = parts[0];
+			let name = format::snake_to_upper_camel(parts[1]);
+			Some(format!("{}::{}", module, name))
+		}
+		_ => None
+	}.expect("Enum had three or more parts")
+}
+
 fn output_reqevent(re: &RequestEvent) -> String {
 	let mut output = String::new();
 
@@ -150,19 +185,7 @@ fn output_reqevent(re: &RequestEvent) -> String {
 		for a in &re.args {
 			output += format!("\t\t\t/// {}.\n", format::to_title(&a.summary)).as_str();
 			if let Some(enm) = &a.enm {
-				let parts: Vec<&str> = enm.split('.').collect();
-				output += match parts.len() {
-					1 => {
-						let name = format::snake_to_upper_camel(parts[0]);
-						Some(format!("\t\t\t{}: {},\n", a.name, name))
-					}
-					2 => {
-						let module = parts[0];
-						let name = format::snake_to_upper_camel(parts[1]);
-						Some(format!("\t\t\t{}: {}::{},\n", a.name, module, name))
-					}
-					_ => None
-				}.expect("Enum had three or more parts").as_str()
+				output += format!("\t\t\t{}: {},\n", a.name, string_enum_to_type(enm)).as_str();
 			} else {
 				output += format!("\t\t\t{}: {},\n", a.name, a.typ.to_rust_type_string()).as_str();
 			}
@@ -173,8 +196,119 @@ fn output_reqevent(re: &RequestEvent) -> String {
 	output
 }
 
+fn output_request_from_opcode(re: &RequestEvent, index: usize) -> String {
+	let mut output = String::new();
+
+	output += format!("{}{} => {{\n", t(4), index).as_str();
+	output += format!("{}let mut index = 0usize;\n", t(5)).as_str();
+	for arg in &re.args {
+		let single_byte = match arg.typ {
+			ArgType::Int => true,
+			ArgType::Uint => true,
+			ArgType::Fixed => true,
+			ArgType::String => false,
+			ArgType::ObjectId => true,
+			ArgType::NewId => true,
+			ArgType::Array => false,
+			ArgType::Fd => true,
+		};
+		if single_byte {
+			match arg.typ {
+				ArgType::Int => {
+					output += format!(
+						"{}let {} = args[index] as i32;\n",
+						t(5), arg.name,
+					).as_str();
+				}
+				ArgType::Uint => {
+					if let Some(enm) = &arg.enm {
+						let typ = string_enum_to_type(enm);
+						output += format!(
+							"{}let {} = {}::from_u32(args[index]).unwrap();\n",
+							t(5), arg.name, typ,
+						).as_str();
+					} else {
+						output += format!(
+							"{}let {} = args[index];\n",
+							t(5), arg.name,
+						).as_str();
+					}
+				}
+				_ => {
+					output += format!(
+						"{}let {} = args[index];\n",
+						t(5), arg.name,
+					).as_str();
+				}
+			}
+			output += format!("{}index += 1;\n", t(5)).as_str();
+		} else {
+			output += match arg.typ {
+				ArgType::String => {
+					let mut output = String::new();
+					output += format!(
+						"{}let {}_size: usize = args[index].try_into().unwrap();\n",
+						t(5), arg.name,
+					).as_str();
+					// The word count (padded), not the number of characters
+					output += format!(
+						"{}let {}_count = {}_size.div_ceil(4);\n",
+						t(5), arg.name, arg.name,
+					).as_str();
+					output += format!("{}index += 1;\n", t(5)).as_str();
+					output += format!(
+						"{}let {} = crate::le_arr_to_string(&args[index..index + {}_count], {}_size);\n",
+						t(5), arg.name, arg.name, arg.name,
+					).as_str();
+					output += format!(
+						"{}index += {}_count;\n",
+						t(5), arg.name,
+					).as_str();
+					Some(output)
+				}
+				ArgType::Array => {
+					let mut output = String::new();
+					output += format!(
+						"{}let {}_size: usize = args[index].try_into().unwrap();\n",
+						t(5), arg.name,
+					).as_str();
+					// The word count (padded), not the number of elements
+					output += format!(
+						"{}let {}_count = {}_size.div_ceil(4);\n",
+						t(5), arg.name, arg.name,
+					).as_str();
+					output += format!("{}index += 1;\n", t(5)).as_str();
+					output += format!(
+						"{}let {} = crate::to_vec(&args[index..index + {}_count], {}_size);\n",
+						t(5), arg.name, arg.name, arg.name,
+					).as_str();
+					output += format!(
+						"{}index += {}_count;\n",
+						t(5), arg.name,
+					).as_str();
+					Some(output)
+				}
+				_ => None
+			}.expect("Argument type was multi-byte but no handler was provided").as_str();
+		}
+	}
+
+	output += format!(
+		"{}Some(Request::{} {{\n",
+		t(5), snake_to_upper_camel(&re.name),
+	).as_str();
+	for arg in &re.args {
+		output += format!("{}{},\n", t(6), arg.name).as_str();
+	}
+	output += format!("{}}})\n", t(5)).as_str();
+	output += format!("{}}}\n", t(4)).as_str();
+
+	output
+}
+
 fn build_output(interfaces: Vec<Interface>) -> String {
 	let mut output = String::new();
+	output += output_string_conversion().as_str();
 
 	for (index, interface) in interfaces.iter().enumerate() {
 		if let Some(desc) = interface.description.as_ref() {
@@ -217,7 +351,18 @@ fn build_output(interfaces: Vec<Interface>) -> String {
 			for request in &interface.requests {
 				output += output_reqevent(request).as_str();
 			}
-			output += "\t}\n";
+			output += "\t}\n\n";
+
+			output += "\timpl Request {\n";
+			output += "\t\tpub fn from_opcode(opcode: u16, args: &[u32]) -> Option<Self> {\n";
+			output += format!("{}match opcode {{\n", t(3)).as_str();
+			for (i, event) in interface.requests.iter().enumerate() {
+				output += output_request_from_opcode(event, i).as_str();
+			}
+			output += format!("{}_ => None,\n", t(4)).as_str();
+			output += format!("{}}}\n", t(3)).as_str();
+			output += "\t\t}\n";
+			output += "\t}\n"
 		}
 
 		if !interface.events.is_empty() {
